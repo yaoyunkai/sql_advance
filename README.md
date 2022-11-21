@@ -1,0 +1,183 @@
+# SQL 进阶
+
+## chapter1
+
+### 1.1 CASE表达式
+
+CASE表达式有简单CASE表达式（simple case expression）和搜索CASE表达式（searched case expression）两种写法
+
+```mysql
+--简单CASE表达式
+CASE sex
+WHEN '1' THEN ’男’
+WHEN '2' THEN ’女’
+ELSE ’其他’ END
+
+--搜索CASE表达式
+CASE WHEN sex ='1'THEN’男’
+WHEN sex ='2'THEN’女’
+ELSE ’其他’ END
+```
+
+Notice:
+
+- 返回的数据格式要统一
+- END
+- 通常要写ELSE
+
+#### 将已有编号方式转换为新的方式并统计
+
+在进行非定制化统计时，我们经常会遇到将已有编号方式转换为另外一种便于分析的方式并进行统计的需求。
+
+![image-20221121220850409](.assets/image-20221121220850409.png)
+
+```mysql
+SELECT 
+    CASE pref_name
+        WHEN '德岛' THEN '四国'
+        WHEN '香川' THEN '四国'
+        WHEN '爱媛' THEN '四国'
+        WHEN '高知' THEN '四国'
+        WHEN '福冈' THEN '九州'
+        WHEN '佐贺' THEN '九州'
+        WHEN '长崎' THEN '九州'
+        ELSE '其他'
+    END AS district,
+    SUM(population)
+FROM
+    PopTbl
+GROUP BY CASE pref_name
+    WHEN '德岛' THEN '四国'
+    WHEN '香川' THEN '四国'
+    WHEN '爱媛' THEN '四国'
+    WHEN '高知' THEN '四国'
+    WHEN '福冈' THEN '九州'
+    WHEN '佐贺' THEN '九州'
+    WHEN '长崎' THEN '九州'
+    ELSE '其他'
+END;
+```
+
+问题是在 select和groupby中都需要写CASE语句，是否可以在groupby中使用select中case的别名：SQL标准不可以，因为groupby子句比select语句先执行，所以在GROUP BY子句中引用在SELECT子句里定义的别称是不被允许的。
+
+```mysql
+SELECT 
+    CASE pref_name
+        WHEN '德岛' THEN '四国'
+        WHEN '香川' THEN '四国'
+        WHEN '爱媛' THEN '四国'
+        WHEN '高知' THEN '四国'
+        WHEN '福冈' THEN '九州'
+        WHEN '佐贺' THEN '九州'
+        WHEN '长崎' THEN '九州'
+        ELSE '其他'
+    END AS dist,
+    SUM(population) AS pop
+FROM
+    PopTbl
+GROUP BY dist
+```
+
+不过也有支持这种SQL语句的数据库，例如在PostgreSQL和MySQL中，这个查询语句就可以顺利执行。
+
+#### 用一条SQL语句进行不同条件的统计
+
+例如，我们需要往存储各县人口数量的表PopTbl里添加上“性别”列，然后求按性别、县名汇总的人数。
+
+![image-20221121221803451](.assets/image-20221121221803451.png)
+
+![image-20221121221815093](.assets/image-20221121221815093.png)
+
+分别统计每个县的“男性”（即’1'）人数和“女性”（即’2'）人数。也就是说，这里是将“行结构”的数据转换成了“列结构”的数据。
+
+```mysql
+SELECT 
+    pref_name,
+    SUM(CASE
+        WHEN sex = '1' THEN population
+        ELSE 0
+    END) AS cnt_m,
+    SUM(CASE
+        WHEN sex = '2' THEN population
+        ELSE 0
+    END) AS cnt_f
+FROM
+    poptbl2
+GROUP BY pref_name
+```
+
+除了SUM, COUNT、AVG等聚合函数也都可以用于将行结构的数据转换成列结构的数据。
+
+#### 用check约束定义多个列的条件关系
+
+假设某公司规定“女性员工的工资必须在20万日元以下”
+
+```mysql
+CREATE TABLE TestSal (
+    sex CHAR(1),
+    salary INTEGER,
+    CONSTRAINT check_salary CHECK (CASE
+        WHEN
+            sex = '2'
+        THEN
+            CASE
+                WHEN salary <= 200000 THEN 1
+                ELSE 0
+            END
+        ELSE 1
+    END = 1)
+);
+```
+
+check里面的结果等于0，那么check不通过。
+
+重点理解的是蕴含式和逻辑与（logical product）的区别。
+
+```sql
+/* 蕴含式 conditional P->Q */
+CONSTRAINT check_salary CHECK
+( CASE WHEN sex = '2'
+       THEN CASE WHEN salary <= 200000
+                 THEN 1 ELSE 0 END
+       ELSE 1 END = 1 )
+       
+       
+/* 逻辑与 logical product P^Q */
+CONSTRAINT check_salary CHECK
+( sex = '2' AND salary <= 200000 )
+```
+
+要想让逻辑与P∧Q为真，需要命题P和命题Q均为真，或者一个为真且另一个无法判定真假。也就是说，能在这家公司工作的是“性别为女且工资在20万日元以下”的员工，以及性别或者工资无法确定的员工（如果一个条件为假，那么即使另一个条件无法确定真假，也不能在这里工作）。
+
+而要想让蕴含式P→Q为真，需要命题P和命题Q均为真，或者P为假，或者P无法判定真假。也就是说如果不满足“是女性”这个前提条件，则无需考虑工资约束。
+
+#### 在update语句里进行条件分支
+
+下面思考一下这样一种需求：以某数值型的列的当前值为判断对象，将其更新成别的值。
+
+![image-20221121225941739](.assets/image-20221121225941739.png)
+
+```MySQL
+UPDATE salaries 
+SET 
+    salary = CASE
+        WHEN salary >= 300000 THEN salary * 0.9
+        WHEN salary >= 250000 AND salary < 280000 THEN salary * 1.2
+        ELSE salary
+    END
+```
+
+这个技巧的应用范围很广。例如，可以用它简单地完成主键值调换这种繁重的工作。
+
+```sql
+UPDATE SomeTable 
+SET 
+    p_key = CASE
+        WHEN p_key = 'a' THEN 'b'
+        WHEN p_key = 'b' THEN 'a'
+        ELSE p_key
+    END
+WHERE
+    p_key IN ('a' , 'b');
+```
+
