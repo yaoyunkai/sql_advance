@@ -295,3 +295,54 @@ FROM
 
 #### 在case表达式中使用聚合函数
 
+如表StudentClub所示，这张表的主键是“学号、社团ID”，存储了学生和社团之间多对多的关系。
+
+![image-20221122212042628](.assets/image-20221122212042628.png)
+
+接下来，我们按照下面的条件查询这张表里的数据。
+
+1．获取只加入了一个社团的学生的社团ID。
+
+```sql
+SELECT 
+    std_id, MAX(club_id) AS main_club
+FROM
+    studentclub
+GROUP BY std_id
+HAVING COUNT(*) = 1;
+```
+
+2．获取加入了多个社团的学生的主社团ID。
+
+```sql
+SELECT 
+    std_id, club_id AS main_club
+FROM
+    studentclub
+WHERE
+    main_club_flg = 'Y';
+```
+
+而如果使用CASE表达式，下面这一条SQL语句就可以了。
+
+```sql
+SELECT 
+    std_id,
+    CASE
+        WHEN COUNT(*) = 1 THEN MAX(club_id)
+        ELSE MAX(CASE
+            WHEN main_club_flg = 'Y' THEN club_id
+            ELSE NULL
+        END)
+    END AS main_club
+FROM
+    StudentClub
+GROUP BY std_id;
+```
+
+其主要目的是用CASE WHEN COUNT(＊) = 1 …… ELSE ……．这样的CASE表达式来表示“只加入了一个社团还是加入了多个社团”这样的条件分支。
+
+CASE表达式用在SELECT子句里时，既可以写在聚合函数内部，也可以写在聚合函数外部。
+
+作为表达式，CASE表达式在执行时会被判定为一个固定值，因此它可以写在聚合函数内部；也正因为它是表达式，所以还可以写在SELECE子句、GROUP BY子句、WHERE子句、ORDER BY子句里。简单点说，在能写列名和常量的地方，通常都可以写CASE表达式。
+
