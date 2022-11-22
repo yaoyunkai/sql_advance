@@ -181,3 +181,117 @@ WHERE
     p_key IN ('a' , 'b');
 ```
 
+#### 表之间的数据匹配
+
+如下所示，这里有一张资格培训学校的课程一览表和一张管理每个月所设课程的表。
+
+![image-20221122211010132](.assets/image-20221122211010132.png)
+
+![image-20221122211017902](.assets/image-20221122211017902.png)
+
+我们要用这两张表来生成下面这样的交叉表，以便于一目了然地知道每个月开设的课程。
+
+```
+    course_name   6月   7月   8月
+    -----------  ----  ----  ----
+    会计入门         ○    ×     ×
+    财务知识         ×    ×    ○
+    簿记考试         ○    ×     ×
+    税务师           ○    ○    ○
+```
+
+检查表OpenCourses中的各月里有表CourseMaster中的哪些课程。这个匹配条件可以用CASE表达式来写。
+
+```mysql
+
+SELECT 
+    course_name,
+    CASE
+        WHEN
+            course_id IN (SELECT 
+                    course_id
+                FROM
+                    OpenCourses
+                WHERE
+                    month = 200706)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '6月',
+    CASE
+        WHEN
+            course_id IN (SELECT 
+                    course_id
+                FROM
+                    OpenCourses
+                WHERE
+                    month = 200707)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '7月',
+    CASE
+        WHEN
+            course_id IN (SELECT 
+                    course_id
+                FROM
+                    OpenCourses
+                WHERE
+                    month = 200708)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '8月'
+FROM
+    CourseMaster;
+```
+
+```sql
+
+SELECT 
+    CM.course_name,
+    CASE
+        WHEN
+            EXISTS( SELECT 
+                    course_id
+                FROM
+                    OpenCourses OC
+                WHERE
+                    month = 200706
+                        AND OC.course_id = CM.course_id)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '6月',
+    CASE
+        WHEN
+            EXISTS( SELECT 
+                    course_id
+                FROM
+                    OpenCourses OC
+                WHERE
+                    month = 200707
+                        AND OC.course_id = CM.course_id)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '7月',
+    CASE
+        WHEN
+            EXISTS( SELECT 
+                    course_id
+                FROM
+                    OpenCourses OC
+                WHERE
+                    month = 200708
+                        AND OC.course_id = CM.course_id)
+        THEN
+            '○'
+        ELSE '×'
+    END AS '8月'
+FROM
+    CourseMaster CM;
+```
+
+#### 在case表达式中使用聚合函数
+
