@@ -1,6 +1,6 @@
 # SQL 进阶
 
-## chapter1
+## 1. 神奇的SQL
 
 ### 1.1 CASE表达式
 
@@ -539,4 +539,120 @@ FROM
 4．应把表看作行的集合，用面向集合的方法来思考。
 
 5．自连接的性能开销更大，应尽量给用于连接的列建立索引。
+
+### 1.3 三值逻辑和NULL
+
+总之，数据库里只要存在一个NULL，查询的结果就可能不正确。
+
+普通语言里的布尔型只有true和false两个值，这种逻辑体系被称为二值逻辑。而SQL语言里，除此之外还有第三个值unknown，因此这种逻辑体系被称为三值逻辑（three-valued logic）。
+
+#### 理论篇
+
+第一 两种NULL的说法：
+
+两种NULL分别指的是“未知”（unknown）和“不适用”（not applicable, inapplicable）。以“不知道戴墨镜的人眼睛是什么颜色”这种情况为例，这个人的眼睛肯定是有颜色的，但是如果他不摘掉眼镜，别人就不知道他的眼睛是什么颜色。这就叫作未知。而“不知道冰箱的眼睛是什么颜色”则属于“不适用”。因为冰箱根本就没有眼睛，所以“眼睛的颜色”这一属性并不适用于冰箱。
+
+![image-20221123214610304](.assets/image-20221123214610304.png)
+
+**为什么必须写成 IS NULL**
+
+```mysql
+-- 查询NULL时出错的SQL语句
+SELECT *
+  FROM tbl_A
+WHERE col_1 = NULL;
+```
+
+对NULL使用比较谓词后得到的结果总是unknown。而查询结果只会包含WHERE子句里的判断结果为true的行，不会包含判断结果为false和unknown的行。不只是等号，对NULL使用其他比较谓词，结果也都是一样的。所以无论col_1是不是NULL，比较结果都是unknown。
+
+那么，为什么对NULL使用比较谓词后得到的结果永远不可能为真呢？这是因为，NULL既不是值也不是变量。NULL只是一个表示“没有值”的标记，而比较谓词只适用于值。因此，对并非值的NULL使用比较谓词本来就是没有意义的
+
+*NULL并不是值。*
+
+**unknown 、第三个真值**
+
+终于轮到真值unknown登场了。本节开头也提到过，它是因关系数据库采用了NULL而被引入的“第三个真值”。
+
+这里有一点需要注意：真值unknown和作为NULL的一种的UNKNOWN（未知）是不同的东西。前者是明确的布尔型的真值，后者既不是值也不是变量。为了便于区分，前者采用粗体的小写字母unknown，后者用普通的大写字母UNKNOWN来表示。为了让大家理解两者的不同，我们来看一个x=x这样的简单等式。x是真值unknown时，x=x被判断为true，而x是UNKNOWN时被判断为unknown。
+
+![image-20221123220527718](.assets/image-20221123220527718.png)
+
+为了便于记忆，请注意这三个真值之间有下面这样的优先级顺序:
+
+```
+AND的情况： false ＞ unknown ＞ true
+
+OR的情况： true ＞ unknown ＞ false
+```
+
+#### 实践篇
+
+**比较谓词和NULL(1): 排中律不成立**
+
+像这样，“把命题和它的否命题通过‘或者’连接而成的命题全都是真命题”这个命题在二值逻辑中被称为排中律（Law of Excluded Middle）。顾名思义，排中律就是指不认可中间状态，对命题真伪的判定黑白分明，是古典逻辑学的重要原理。
+
+**比较谓词和NULL(2):CASE表达式和NULL**
+
+```sql
+    --col_1为1时返回○、为NULL时返回×的CASE表达式？
+    CASE col_1
+      WHEN 1     THEN'○'
+      WHEN NULL  THEN'×'
+    END
+```
+
+这个CASE表达式一定不会返回×。这是因为，第二个WHEN子句是col_1 = NULL的缩写形式。正如大家所知，这个式子的真值永远是unknown。而且CASE表达式的判断方法与WHERE子句一样，只认可真值为true的条件。
+
+```sql
+    CASE WHEN col_1 = 1 THEN'○'
+        WHEN col_1 IS NULL THEN'×'
+     END
+```
+
+**NOT IN和NOT EXISTS不是等价的**
+
+在对SQL语句进行性能优化时，经常用到的一个技巧是将IN改写成EXISTS
+
+![image-20221123223243810](.assets/image-20221123223243810.png)
+
+我们考虑一下如何根据这两张表查询“与B班住在东京的学生年龄不同的A班学生”。
+
+```sql
+    --查询与B班住在东京的学生年龄不同的A班学生的SQL语句？
+    SELECT *
+      FROM Class_A
+     WHERE age NOT IN ( SELECT age
+                          FROM Class_B
+                        WHERE city =’东京’);
+```
+
+这个语句查询不到结果。可以看出，这里对A班的所有行都进行了如此繁琐的判断，然而没有一行在WHERE子句里被判断为true。也就是说，如果NOT IN子查询中用到的表里被选择的列中存在NULL，则SQL语句整体的查询结果永远是空。
+
+```SQL
+SELECT 
+    *
+FROM
+    Class_A A
+WHERE
+    NOT EXISTS( SELECT 
+            *
+        FROM
+            Class_B B
+        WHERE
+            A.age = B.age AND B.city = ’东京’);
+```
+
+产生这样的结果，是因为EXISTS谓词永远不会返回unknown。EXISTS只会返回true或者false。
+
+**限定谓词和NULL**
+
+SQL里有ALL和ANY两个限定谓词。因为ANY与IN是等价的，所以我们不经常使用ANY。
+
+ALL谓词其实是多个以AND连接的逻辑表达式的省略写法。
+
+**限定谓词和极值函数不是等价的**
+
+极值函数在统计时会把为NULL的数据排除掉。
+
+
 
