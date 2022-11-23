@@ -464,27 +464,79 @@ WHERE
 
 现在，我们要按照价格从高到低的顺序，对下面这张表里的商品进行排序。我们让价格相同的商品位次也一样，而紧接着它们的商品则有两种排序方法，一种是跳过之后的位次，另一种是不跳过之后的位次。
 
+![image-20221123210737374](.assets/image-20221123210737374.png)
+
+可以使用窗口函数：
+
 ```SQL
-SELECT 
-    name, price, rank() over (order by price desc) as rank_1, dense_rank() over (order by price desc) as rank_2
-FROM
-    products;
+SELECT name, price, RANK() OVER (ORDER BY price DESC) AS rank_1,   DENSE_RANK() OVER (ORDER BY price DESC) AS rank_2
+FROM Products;
 ```
 
-用非等值自连接：
+可以使用非等值自连接：
 
 ```SQL
 SELECT 
-    P1.name,
-    P1.price,
+    p1.name,
+    p1.price,
     (SELECT 
-            COUNT(P2.price)
+            COUNT(p2.price)
         FROM
-            Products P2
+            products p2
         WHERE
-            P2.price > P1.price) + 1 AS rank_1
+            p2.price > p1.price) + 1 AS rank_1
 FROM
-    Products P1
+    products p1
 ORDER BY rank_1;
 ```
+
+去掉标量子查询后边的+1，就可以从0开始给商品排序，而且如果修改成COUNT(DISTINCT P2.price)，那么存在相同位次的记录时，就可以不跳过之后的位次，而是连续输出（相当于DENSE_RANK函数）。
+
+这条SQL语句的执行原理：体现了面向集合的思维方式，子查询所做的，是计算出价格比自己高德记录的条数并将其作为自己的位次。
+
+为了便于理解，我们先考虑从0开始，对去重之后的4个价格“{ 100, 80,50, 30 }”进行排序的情况。首先是价格最高的100，因为不存在比它高的价格，所以COUNT函数返回0。接下来是价格第二高的80，比它高的价格有一个100，所以COUNT函数返回1。同样地，价格为50的时候返回2，为30的时候返回3。这样，就生成了一个与每个价格对应的集合，如下表所示。
+
+![image-20221123211536145](.assets/image-20221123211536145.png)
+
+这条SQL语句会生成这样几个“同心圆状的” 递归集合，然后数这些集合的元素个数。
+
+顺便说一下，这个子查询的代码还可以像下面这样按照自连接的写法来改写。
+
+```SQL
+SELECT 
+    p1.name,
+    MAX(p1.price) AS price,
+    COUNT(p2.name) + 1 AS rank_1
+FROM
+    products p1
+        LEFT OUTER JOIN
+    products p2 ON p1.price < p2.price
+GROUP BY p1.name
+ORDER BY rank_1
+```
+
+去掉这条SQL语句里的聚合并展开成下面这样，就可以更清楚地看出同心圆状的包含关系：
+
+```SQL
+SELECT 
+    P1.name, P2.name
+FROM
+    Products P1
+        LEFT OUTER JOIN
+    Products P2 ON P1.price < P2.price;
+```
+
+这里使用外连接的原因：我们需要包含左边的所有数据。
+
+下面是本节要点。
+
+1．自连接经常和非等值连接结合起来使用。
+
+2．自连接和GROUP BY结合使用可以生成递归集合。
+
+3．将自连接看作不同表之间的连接更容易理解。
+
+4．应把表看作行的集合，用面向集合的方法来思考。
+
+5．自连接的性能开销更大，应尽量给用于连接的列建立索引。
 
