@@ -666,6 +666,8 @@ ALL谓词其实是多个以AND连接的逻辑表达式的省略写法。
 
 2．循环比较每一行和下一行的编号。
 
+order by 是光标定义的一部分，而不是关系运算符。
+
 SQL会将多条记录作为一个集合来处理，因此如果将表整体看作一个集合：
 
 ```SQL
@@ -677,4 +679,69 @@ HAVING COUNT(*) <> MAX(seq);
 ```
 
 如果这个查询结果有1行，说明存在缺失的编号；如果1行都没有，说明不存在缺失的编号。这是因为，如果用COUNT(＊)统计出来的行数等于“连续编号”列的最大值，就说明编号从开始到最后是连续递增的，中间没有缺失。如果有缺失，COUNT(＊)会小于MAX(seq)，这样HAVING子句就变成真了。
+
+如果用集合论的语言来描述，那么这个查询所做的事情就是检查自然数集合和SeqTbl集合之间是否存在一一映射（又称双射）。换句话说，就是像下图展示的那样，MAX(seq)计算的，是由“到seq最大值为止的没有缺失的连续编号（即自然数）”构成的集合的元素个数，而COUNT(＊)计算的是SeqTbl这张表里实际的元素个数（即行数）。
+
+![image-20221213222828425](.assets/image-20221213222828425.png)
+
+面的SQL语句里没有GROUP BY子句，此时整张表会被聚合为一行。这种情况下，就不能在SELECT子句里引用原来的表里的列了，要么就得像示例里一样使用常量，要么就得像SELECT COUNT(＊)这样使用聚合函数。
+
+查询一下缺失编号的最小值：
+
+```mysql
+SELECT 
+    MIN(seq + 1) AS gap
+FROM
+    seqtbl
+WHERE
+    (seq + 1) NOT IN (SELECT 
+            seq
+        FROM
+            seqtbl);
+```
+
+因此，像这条语句一样进行行与行之间的比较时其实是不进行排序的。
+
+#### 用HAVING子句进行子查询：求众数
+
+众数（mode）就是其中之一。它指的是在群体中出现次数最多的值。
+
+![image-20221213225321508](.assets/image-20221213225321508.png)
+
+思路是将收入相同的毕业生汇总到一个集合里，然后从汇总后的各个集合里找出元素个数最多的集合。
+
+```mysql
+SELECT 
+    income, COUNT(*) AS cnt
+FROM
+    graduates
+GROUP BY income
+HAVING COUNT(*) >= ALL (SELECT 
+        COUNT(*)
+    FROM
+        graduates
+    GROUP BY income);
+```
+
+GROUP BY子句的作用是根据最初的集合生成若干个子集，因此，将收入（income）作为GROUP BY的列时，将得到S1～S5这样5个子集，如下图所示。
+
+![image-20221213225837708](.assets/image-20221213225837708.png)
+
+提到过ALL谓词用于NULL或空集时会出现问题，可以用极值函数来代替。这里要求的是元素数最多的集合，因此可以用MAX函数。
+
+```mysql
+SELECT 
+    income, COUNT(*) AS cnt
+FROM
+    graduates
+GROUP BY income
+HAVING COUNT(*) >= (SELECT 
+        MAX(cnt)
+    FROM
+        (SELECT 
+            COUNT(*) AS cnt
+        FROM
+            graduates
+        GROUP BY income) x);
+```
 
