@@ -206,3 +206,6 @@ GROUP BY pref_name
 
 新手用WHERE子句进行条件分支，高手用**SELECT子句**进行条件分支。
 
+## 用CHECK约束定义多个列的条件关系
+
+其实，CASE表达式和CHECK约束是很般配的一对组合。
