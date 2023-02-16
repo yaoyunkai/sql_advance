@@ -4,6 +4,8 @@ case表达式从SQL92标准引入。
 
 > todo: in和exists的区别
 
+> todo: having子句的作用
+
 ## CASE表达式概述
 
 CASE表达式有简单CASE表达式（simple case expression）和搜索CASE表达式（searched case expression）两种写法.
@@ -378,4 +380,140 @@ SELECT CM.course_name,
 通过EXISTS进行的子查询能够用到“month, course_id”这样的主键索引，因此尤其是当表OpenCourses里数据比较多的时候更有优势。
 
 ## 在CASE表达式中使用聚合函数
+
+假设这里有一张显示了学生及其加入的社团的一览表。如表StudentClub所示，这张表的主键是“学号、社团ID”，存储了学生和社团之间多对多的关系。
+
+```
++------+-------+---------+-------------+
+|std_id|club_id|club_name|main_club_flg|
++------+-------+---------+-------------+
+|100   |1      |棒球       |Y            |
+|100   |2      |管弦乐      |N            |
+|200   |2      |管弦乐      |N            |
+|200   |3      |羽毛球      |Y            |
+|200   |4      |足球       |N            |
+|300   |4      |足球       |N            |
+|400   |5      |游泳       |N            |
+|500   |6      |围棋       |N            |
++------+-------+---------+-------------+
+
+table: StudentClub
+```
+
+对于加入了多个社团的学生, 有一个主社团标志位为 Y, 对于只有一个社团的学生, 主社团的标志位为N
+
+接下来，我们按照下面的条件查询这张表里的数据。
+
+1．获取只加入了一个社团的学生的社团ID。2．获取加入了多个社团的学生的主社团ID。
+
+很容易想到的办法是，针对两个条件分别写SQL语句来查询:
+
+```SQL
+-- 选择只加入了一个社团的学生
+SELECT 
+    std_id, MAX(club_id) AS main_club
+FROM
+    studentclub
+GROUP BY std_id
+HAVING COUNT(*) = 1;
+
+-- 选择加入了多个社团的学生
+SELECT 
+    std_id, club_id
+FROM
+    studentclub
+WHERE
+    main_club_flg = 'Y'
+```
+
+使用CASE表达式，下面这一条SQL语句就可以了:
+
+```sql
+SELECT 
+    std_id,
+    CASE
+        WHEN COUNT(*) = 1 THEN MAX(club_id)
+        ELSE MAX(CASE
+            WHEN main_club_flg = 'Y' THEN club_id
+            ELSE NULL
+        END)
+    END AS main_club
+FROM
+    StudentClub
+GROUP BY std_id;
+```
+
+其主要目的是用`CASE WHEN COUNT(*) = 1 …… ELSE ……` 这样的CASE表达式来表示“只加入了一个社团还是加入了多个社团”这样的条件分支。
+
+对聚合结果进行条件判断时要用HAVING子句。
+
+**新手用HAVING子句进行条件分支，高手用SELECT子句进行条件分支。**
+
+## 小结
+
+CASE是表达式。
+
+作为表达式，CASE表达式在执行时会被判定为一个固定值，因此它可以写在聚合函数内部；也正因为它是表达式，所以还可以写在SELECE子句、GROUP BY子句、WHERE子句、ORDER BY子句里。
+
+简单点说，在能写列名和常量的地方，通常都可以写CASE表达式。
+
+1．在GROUP BY子句里使用CASE表达式，可以灵活地选择作为聚合的单位的编号或等级。这一点在进行非定制化统计时能发挥巨大的威力。
+
+2．在聚合函数中使用CASE表达式，可以轻松地将行结构的数据转换成列结构的数据。
+
+3．相反，聚合函数也可以嵌套进CASE表达式里使用。
+
+4．相比依赖于具体数据库的函数，CASE表达式有更强大的表达能力和更好的可移植性。
+
+## 练习题
+
+### 1-1-1 多列数据的最大值
+
+```
++---+-+-+-+
+|key|x|y|z|
++---+-+-+-+
+|A  |1|2|3|
+|B  |5|5|2|
+|C  |4|7|1|
+|D  |3|3|8|
++---+-+-+-+
+```
+
+从表中选择较大的值：
+
+```sql
+SELECT 
+    `key`,
+    CASE
+        WHEN x < y THEN y
+        ELSE x
+    END AS greatest
+FROM
+    greatests;
+```
+
+```sql
+SELECT `key`,
+       CASE WHEN CASE WHEN x < y THEN y ELSE x END < z
+            THEN z
+            ELSE CASE WHEN x < y THEN y ELSE x END
+        END AS greatest
+  FROM Greatests;
+```
+
+### 1-1-2 转换行列
+
+```sql
+SELECT sex,
+       SUM(population) AS total,
+       SUM(CASE WHEN pref_name = '德岛' THEN population ELSE 0 END) AS col_1,
+       SUM(CASE WHEN pref_name = '香川' THEN population ELSE 0 END) AS col_2,
+       SUM(CASE WHEN pref_name = '爱媛' THEN population ELSE 0 END) AS col_3,
+       SUM(CASE WHEN pref_name = '高知' THEN population ELSE 0 END) AS col_4,
+       SUM(CASE WHEN pref_name IN ('德岛', '香川', '爱媛', '高知')
+                THEN population ELSE 0 END) AS zaijie
+  FROM PopTbl2
+ GROUP BY sex;
+```
 
