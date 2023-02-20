@@ -408,3 +408,63 @@ SELECT P1.name, P2.name
 
 5．自连接的性能开销更大，应尽量给用于连接的列建立索引。
 
+### 练习题1-2-2 分地区排序
+
+```
++--------+----+-----+
+|district|name|price|
++--------+----+-----+
+|东北      |柠檬  |30   |
+|东北      |橘子  |100  |
+|东北      |苹果  |50   |
+|东北      |葡萄  |50   |
+|关东      |柠檬  |100  |
+|关东      |苹果  |100  |
+|关东      |菠萝  |100  |
+|关东      |葡萄  |70   |
+|关西      |柠檬  |70   |
+|关西      |苹果  |20   |
+|关西      |西瓜  |30   |
++--------+----+-----+
+```
+
+1, 窗口函数解法：
+
+```SQL
+SELECT district,
+       name,
+       price,
+       RANK() OVER (PARTITION BY district
+           ORDER BY price DESC) AS rank_1
+FROM DistrictProducts
+order by district, rank_1;
+
+/*
++--------+----+-----+------+
+|district|name|price|rank_1|
++--------+----+-----+------+
+|东北      |橘子  |100  |1     |
+|东北      |苹果  |50   |2     |
+|东北      |葡萄  |50   |2     |
+|东北      |柠檬  |30   |4     |
+|关东      |柠檬  |100  |1     |
+|关东      |苹果  |100  |1     |
+|关东      |菠萝  |100  |1     |
+|关东      |葡萄  |70   |4     |
+|关西      |柠檬  |70   |1     |
+|关西      |西瓜  |30   |2     |
+|关西      |苹果  |20   |3     |
++--------+----+-----+------+
+
+*/
+
+SELECT P1.district,
+       P1.name,
+       P1.price,
+       (SELECT COUNT(P2.price)
+        FROM DistrictProducts P2
+        WHERE P1.district = P2.district
+          AND P2.price > P1.price) + 1 AS rank_1
+FROM DistrictProducts P1;
+```
+
