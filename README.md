@@ -10,3 +10,7 @@
 
 3, [三值表达式和NULL](./docs/advance/chapter1-3.md)
 
+4, [having子句](./docs/advance/chapter1-4.md)
+
+5, [外连接的用法](./docs/advance/chapter1-5.md)
+
