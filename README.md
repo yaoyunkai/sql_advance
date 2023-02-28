@@ -14,3 +14,7 @@
 
 5, [外连接的用法](./docs/advance/chapter1-5.md)
 
+
+### SQL Zoo
+
+https://sqlzoo.net/wiki/SQL_Tutorial
