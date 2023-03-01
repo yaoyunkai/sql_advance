@@ -273,3 +273,102 @@ FROM Accounts A1
 ORDER BY prc_date;
 ```
 
+刚才的例题并没有指定要求的累计值的时间区间，因此我们计算的是从最早的数据开始的累计值。接下来，我们考虑一下如何以3次处理为单位求累计值，即移动累计值。所谓移动，指的是将累计的数据行数固定（本例中为3行），一行一行地偏移，如下表所示。
+
+![image-20230301135827268](.assets/image-20230301135827268.png)
+
+使用窗口函数的SQL如下：
+
+```SQL
+select prc_date,
+       prc_amt,
+       sum(prc_amt) over (order by prc_date rows 2 preceding) as onhand_amt
+from accounts;
+```
+
+如果使用关联子查询，我们还可以像下面这样用标量子查询来计算行数:
+
+```SQL
+SELECT prc_date,
+       A1.prc_amt,
+       (SELECT SUM(prc_amt)
+        FROM Accounts A2
+        WHERE A1.prc_date >= A2.prc_date
+          AND (SELECT COUNT(*)
+               FROM Accounts A3
+               WHERE A3.prc_date
+                         BETWEEN A2.prc_date AND A1.prc_date) <= 3)
+           AS mvg_sum
+FROM Accounts A1
+ORDER BY prc_date;
+```
+
+这条语句的要点是，A3.prc_date在以A2.prc_date为起点，以A1.prc_date为终点的区间内移动，请思考一下。通过修改“<= 3”里的数字，我们可以以任意行数为单位来进行偏移，比如以4行或5行为单位。在处理前2行时，即使数据不满3行，这条SQL语句还是计算出了相应的累计值。
+
+```SQL
+-- 移动累计值(3)：不满3行的区间按无效处理
+SELECT prc_date,
+       A1.prc_amt,
+       (SELECT SUM(prc_amt)
+        FROM Accounts A2
+        WHERE A1.prc_date >= A2.prc_date
+          AND (SELECT COUNT(*)
+               FROM Accounts A3
+               WHERE A3.prc_date
+                         BETWEEN A2.prc_date AND A1.prc_date) <= 3
+        HAVING COUNT(*) = 3) AS mvg_sum -- 不满3行数据的不显示
+FROM Accounts A1
+ORDER BY prc_date;
+
+SELECT A1.prc_date AS A1_date,
+       A1.prc_amt  AS A1_amt,
+       A2.prc_date AS A2_date,
+       A2.prc_amt  AS A2_amt
+FROM Accounts A1,
+     Accounts A2
+WHERE A1.prc_date >= A2.prc_date
+  and (select count(*) from accounts A3 where A3.prc_date between A2.prc_date and A1.prc_date) <= 3
+```
+
+## 查询重叠的时间区间
+
+假设有下面这样一张表Reservations，记录了酒店或者旅馆的预约情况。
+
+```
++--------+----------+----------+
+|reserver|start_date|end_date  |
++--------+----------+----------+
+|内田      |2006-11-03|2006-11-05|
+|堀       |2006-10-31|2006-11-01|
+|山本      |2006-11-03|2006-11-04|
+|木村      |2006-10-26|2006-10-27|
+|水谷      |2006-11-06|2006-11-06|
+|荒木      |2006-10-28|2006-10-31|
++--------+----------+----------+
+
+```
+
+![image-20230301152935127](.assets/image-20230301152935127.png)
+
+```SQL
+-- 求重叠的住宿期间
+SELECT reserver, start_date, end_date
+FROM Reservations R1
+WHERE EXISTS
+          (SELECT *
+           FROM Reservations R2
+           WHERE R1.reserver <> R2.reserver -- 与自己以外的客人进行比较
+             AND (R1.start_date BETWEEN R2.start_date AND R2.end_date -- 条件(1)：自己的入住日期在他人的住宿期间内
+               OR R1.end_date BETWEEN R2.start_date AND R2.end_date)); -- 条件(2)：自己的离店日期在他人的住宿期间内
+```
+
+## 小结
+
+1．作为面向集合语言，SQL在比较多行数据时，不进行排序和循环。
+
+2．SQL的做法是添加比较对象数据的集合，通过关联子查询（或者自连接）一行一行地偏移处理。如果选用的数据库支持窗口函数，也可以考虑使用窗口函数。
+
+3．求累计值和移动平均值的基本思路是使用冯·诺依曼型递归集合。
+
+4．关联子查询的缺点是性能及代码可读性不好。
+
