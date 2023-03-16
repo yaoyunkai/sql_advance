@@ -20,39 +20,6 @@ INSERT INTO Product VALUES ('0007', '擦菜板', '厨房用具', 880, 790, '2008
 INSERT INTO Product VALUES ('0008', '圆珠笔', '办公用品', 100, NULL, '2009-11-11');
 ```
 
-**查询一个表的相关信息**
-
-```SQL
--- 1. 使用information_schema
-SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
-FROM information_schema.COLUMNS
-WHERE TABLE_NAME = 'mytable';
-
-SELECT COLUMN_NAME
-FROM information_schema.KEY_COLUMN_USAGE
-WHERE TABLE_NAME = 'mytable' AND CONSTRAINT_NAME = 'PRIMARY';
-
-SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-FROM information_schema.KEY_COLUMN_USAGE
-WHERE TABLE_NAME = 'mytable' AND CONSTRAINT_NAME <> 'PRIMARY' AND REFERENCED_TABLE_NAME IS NOT NULL;
-
-SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE
-FROM information_schema.STATISTICS
-WHERE TABLE_NAME = 'mytable';
-
--- 2. 一些命令
-SHOW TABLE STATUS LIKE 'table_name';
-
-DESCRIBE table_name;
-
-SHOW COLUMNS FROM table_name;
-
-SHOW CREATE TABLE table_name;
-
-SHOW INDEX FROM table_name;
-
-```
-
 ## 3. 聚合与排序
 
 ```
