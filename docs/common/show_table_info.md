@@ -1,3 +1,4 @@
+```sql
 -- 1. 使用information_schema
     SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
     FROM information_schema.COLUMNS
@@ -25,3 +26,5 @@
     SHOW CREATE TABLE table_name;
 
     SHOW INDEX FROM table_name;
+
+```
