@@ -190,6 +190,6 @@ select *
 from information_schema.TABLE_CONSTRAINTS
 where TABLE_SCHEMA like 'demo1%'
 
--- information_schema.key
+-- information_schema.key_column_usage
 ```
 
