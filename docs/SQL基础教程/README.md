@@ -219,3 +219,44 @@ WHERE NOT EXISTS (
 
 ## 窗口函数
 
+```SQL
+select product_name,
+       product_type,
+       sale_price,
+       rank() over (partition by product_type order by sale_price) as `rank`
+from product;
+
+-- PARTITION BY 能够设定排序的对象范围。
+-- ORDER BY 能够指定按照哪一列、何种顺序进行排序。
+```
+
+通过 PARTITION BY 分组后的记录集合称为窗口。此处的窗口并 非“窗户”的意思，而是代表范围。这也是“窗口函数”名称的由来。
+
+此外，各个窗口在定义上绝对不会包含共通的部分。这与通过 GROUP BY 子句分割后的集合具有相同的特征。
+
+排序相关：
+
+```
+rank      :  计算排序时，如果存在相同位次的记录，则会跳过之后的位次
+
+dense_rank:  计算排序，即使存在相同位次的记录，也不会跳过之后的位次
+
+row_number:  赋予唯一的连续位次
+```
+
+窗口函数的位置只能在 SELECT 子句之中。
+
+**计算移动平均**
+
+```SQL
+select product_id,
+       product_name,
+       sale_price,
+       avg(sale_price) over (order by product_id rows 2 preceding) as `avg`
+from product;
+
+-- following
+```
+
+我们使用了 ROWS（“行”）和 PRECEDING（“之前”）两个关键 字，将框架指定为“截止到之前 ~ 行”，因此“ROWS 2 PRECEDING” 就是将框架指定为“截止到之前 2 行”，也就是将作为汇总对象的记录限 定为如下的“最靠近的 3 行”。
+
