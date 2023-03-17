@@ -115,6 +115,62 @@ where e.DEPTNO = 10;
 
 ### 3.3 查找两张表中相同的行
 
+你想找出两张表中相同的行，但需要连接多列。
+
+```SQL
+create view V as
+select ename, job, sal
+from emp
+where job = 'CLERK';
+
+select *
+from V;
+
+/*
++------+-----+----+
+|ename |job  |sal |
++------+-----+----+
+|SMITH |CLERK|800 |
+|ADAMS |CLERK|1100|
+|JAMES |CLERK|950 |
+|MILLER|CLERK|1300|
++------+-----+----+
+
+
+*/
+```
+
+生成笛卡尔积：
+
+```SQL
+select * from t_blog cross join t_type;
+
+select * from t_blog inner join t_type;
+
+select * from t_blog, t_type;
+```
+
+基于必要的列将表连接起来，以返回正确的结果。
+
+也可以使用集合运算 INTERSECT来返回两张表的交集（两张表中相同的行），这样可以避免执行连接操作。
+
+```SQL
+select e.empno, e.ename, e.job, e.sal, e.DEPTNO
+from emp e,
+     V v
+where e.ename = v.ename
+  and e.job = v.job
+  and e.sal = v.sal;
+
+-- 使用集合运算
+select e.empno, e.ename, e.job, e.sal, e.DEPTNO
+from emp e where (ename, job, sal) in (
+    select ename, job, sal from emp 
+    intersect
+    select ename, job, sal from V
+    )
+```
+
 ## 4. 插入 更新和删除
 
 ### 4.5 复制表定义
