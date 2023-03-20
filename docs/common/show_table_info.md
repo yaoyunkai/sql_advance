@@ -27,4 +27,10 @@
 
     SHOW INDEX FROM table_name;
 
+-- 查询字符集相关
+
+    show character set ;
+    show collation like 'utf8mb4%cs';
+
 ```
+

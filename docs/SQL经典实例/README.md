@@ -306,3 +306,55 @@ where TABLE_SCHEMA like 'demo1%'
 
 ## 6. 处理字符串
 
+本章的很多实例使用了函数 TRANSLATE 和 REPLACE。当前，本书提及的所有DBMS 都支持它们，唯一的例外是 MySQL，它只支持替换。
+
+```SQL
+SELECT TRANSLATE('2*[3+4]/{7-2}', '[]{}', '()()');
+SELECT TRANSLATE('[137.4,72.3]' , '[,]', '( )') AS Point, TRANSLATE('(137.4 72.3)' , '( )', '[,]') AS Coordinates;
+```
+
+### 6.1 走查字符串
+
+你想遍历一个字符串，将其中的每个字符都作为一行返回，但 SQL 没有提供循环操作。例如，你想分 4 行显示 EMP 表中的 ENAME"KING"，每一行只包含其中的一个字符。
+
+```SQL
+select e.*, iter.*, substr(e.ename, iter.pos, 1) as C
+from (select ename from emp where ename = 'king') e,
+     (select id as pos from t10) iter
+where iter.pos <= length(e.ENAME)
+
+-- 使用交叉生成笛卡尔积，然后过滤掉超过字符串长度的列
+```
+
+### 6.10 根据表中的行创建分隔列表
+
+想以分隔列表（分隔符可能是逗号）而不是常见的垂直列的方式返回表中的行。换言之，你要将下面的结果集：
+
+```
+DEPTNO EMPS
+------- ------------------------------------
+     10 CLARK,KING,MILLER
+     20 SMITH,JONES,SCOTT,ADAMS,FORD
+     30 ALLEN,WARD,MARTIN,BLAKE,TURNER,JAMES
+```
+
+```mysql
+select deptno, group_concat(ename order by empno separator ',') as emps
+from emp
+group by deptno
+```
+
+## 7. 处理数字
+
+### 7.6 移动总计
+
+```SQL
+select ename, sal, sum(sal) over (order by sal, empno) as running_total
+from emp
+order by sal;
+```
+
+使用窗口函数求移动总计 sum() over
+
+按照不会导致重复值的列组合（例如，独一无二的 SAL 和 EMPNO 的组合）排序，可以确保移动总计是正确的。
+
