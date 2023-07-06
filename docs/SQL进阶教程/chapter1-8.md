@@ -165,16 +165,62 @@ where not exists(
     )
 
 -- chatgpt给出的答案
-SELECT id
-FROM score
-GROUP BY id
-HAVING MIN(score) >= 50;
+select student_id
+from testscores
+group by student_id
+having min(score) >= 50;
 ```
 
-接下来我们把条件改得复杂一些再试试。请思考一下如何查询出满足下列条件的学生。
+**第二个条件**
 
-1．数学的分数在80分以上。2．语文的分数在50分以上。
+1．数学的分数在80分以上。
 
-如果改成下面这样的说法，可能我们一下子就能明白它是全称量化的命题了：
+2．语文的分数在50分以上。
 
-“某个学生的所有行数据中，如果科目是数学，则分数在80分以上；如果科目是语文，则分数在50分以上。”
+解释：某个学生的所有行数据中，如果科目是数学，则分数在80分以上；如果科目是语文，则分数在50分以上。
+
+针对同一个集合内的行数据进行了条件分支后的全称量化。
+
+```MYSQL
+SELECT DISTINCT
+    student_id
+FROM
+    TestScores TS1
+WHERE
+    subject IN ('数学' , '语文')
+        AND NOT EXISTS( SELECT 
+            *
+        FROM
+            TestScores TS2
+        WHERE
+            TS2.student_id = TS1.student_id
+                AND 1 = CASE
+                WHEN subject = '数学' AND score < 80 THEN 1
+                WHEN subject = '语文' AND score < 50 THEN 1
+                ELSE 0
+            END);
+```
+
+```MySQL
+SELECT DISTINCT
+    TS1.student_id
+FROM
+    TestScores TS1
+WHERE
+    TS1.subject IN ('数学', '语文')
+        AND NOT EXISTS (
+            SELECT *
+            FROM TestScores TS2
+            WHERE TS2.student_id = TS1.student_id
+                AND (
+                    (TS2.subject = '数学' AND TS2.score < 80)
+                    OR (TS2.subject = '语文' AND TS2.score < 50)
+                )
+        );
+
+```
+
+#### 全称量化(2)：集合VS谓词
+
+EXISTS和HAVING有一个地方很像，即都是以集合而不是个体为单位来操作数据。
+
