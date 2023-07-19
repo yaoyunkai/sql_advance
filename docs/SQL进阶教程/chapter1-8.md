@@ -224,3 +224,62 @@ WHERE
 
 EXISTS和HAVING有一个地方很像，即都是以集合而不是个体为单位来操作数据。
 
+```
++----------+--------+------+
+|project_id|step_nbr|status|
++----------+--------+------+
+|AA100     |0       |完成    |
+|AA100     |1       |等待    |
+|AA100     |2       |等待    |
+|B200      |0       |等待    |
+|B200      |1       |等待    |
+|CS300     |0       |完成    |
+|CS300     |1       |完成    |
+|CS300     |2       |等待    |
+|CS300     |3       |等待    |
+|DY400     |0       |完成    |
+|DY400     |1       |完成    |
+|DY400     |2       |完成    |
++----------+--------+------+
+
+```
+
+这里的问题是，从这张表中查询出哪些项目已经完成到了工程1：
+
+```MYSQL
+select project_id
+from projects
+group by project_id
+HAVING COUNT(*) = SUM(CASE
+                          WHEN step_nbr <= 1 AND status = '完成' THEN 1
+                          WHEN step_nbr > 1 AND status = '等待' THEN 1
+                          ELSE 0 END);
+```
+
+使用 exists 谓词的解法：某个项目的所有行数据中，如果工程编号是1以下，则该工程已完成；如果工程编号比1大，则该工程还在等待。
+
+```MYSQL
+SELECT *
+FROM Projects P1
+WHERE NOT EXISTS
+    (SELECT status
+     FROM Projects P2
+     WHERE P1.project_id = P2.project_id /* 以项目为单位进行条件判断 */
+       AND status <> CASE
+                         WHEN step_nbr <= 1 /* 使用双重否定来表达全称量化命题 */
+                             THEN '完成'
+                         ELSE '等待' END);
+```
+
+优点是结果里能包含的信息量更大。如果使用HAVING，结果会被聚合，我们只能获取到项目ID，而如果使用EXISTS，则能把集合里的元素整体都获取到。
+
+## 总结
+
+1．SQL中的谓词指的是返回真值的函数。
+
+2．EXISTS与其他谓词不同，接受的参数是集合。
+
+3．因此EXISTS可以看成是一种高阶函数。
+
+4．SQL中没有与全称量词相当的谓词，可以使用NOT EXISTS代替。
+
