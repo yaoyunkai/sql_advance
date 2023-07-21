@@ -114,3 +114,190 @@ SELECT seq FROM SeqTbl;
 
 假设存在下面这样一张存储了火车座位预订情况的表。
 
+```
++----+------+
+|seat|status|
++----+------+
+|1   |已预订   |
+|2   |已预订   |
+|3   |未预定   |
+|4   |未预定   |
+|5   |未预定   |
+|6   |已预订   |
+|7   |未预定   |
+|8   |未预定   |
+|9   |未预定   |
+|10  |未预定   |
+|11  |未预定   |
+|12  |已预订   |
+|13  |已预订   |
+|14  |未预定   |
+|15  |未预定   |
++----+------+
+
+```
+
+问题是，从1～15的座位编号中，找出连续3个空位的全部组合。
+
+```mysql
+select s1.seat as start_seat, '~', s2.seat as end_start
+from seats s1,
+     seats s2
+where s2.seat = s1.seat + (3 - 1)
+  and not exists(
+        select * from seats s3 where s3.seat between s1.seat and s2.seat and s3.status <> '未预定'
+    )
+```
+
+1，通过自连接生成生成长度为3的序列
+
+2，序列内的点要满足状态都是 “未预定”
+
+接下来我们看一下这道例题的升级版，即发生换排的情况。假设这列火车每一排有5个座位。我们在表中加上表示行编号“row_id”列。
+
+```
++----+------+------+
+|seat|row_id|status|
++----+------+------+
+|1   |A     |已预订   |
+|2   |A     |已预订   |
+|3   |A     |未预订   |
+|4   |A     |未预订   |
+|5   |A     |未预订   |
+|6   |B     |已预订   |
+|7   |B     |已预订   |
+|8   |B     |未预订   |
+|9   |B     |未预订   |
+|10  |B     |未预订   |
+|11  |C     |未预订   |
+|12  |C     |未预订   |
+|13  |C     |未预订   |
+|14  |C     |已预订   |
+|15  |C     |未预订   |
++----+------+------+
+
+```
+
+更新描述起点到终点之间所有的点需要满足的条件
+
+```mysql
+select s1.seat as start_seat, '~', s2.seat as end_start
+from seats2 s1,
+     seats2 s2
+where s2.seat = s1.seat + (3 - 1)
+  and not exists(
+        select *
+        from seats2 s3
+        where s3.seat between s1.seat and s2.seat and (s3.status <> '未预订' or s3.row_id <> s1.row_id)
+    )
+```
+
+接下来的例题和上一道刚好相反。这次要查询的是“按现在的空位状况，最多能坐下多少人”。换句话说，要求的是最长的序列。我们使用下面这张表Seats3。
+
+```
++----+------+
+|seat|status|
++----+------+
+|1   |已预订   |
+|2   |未预定   |
+|3   |未预定   |
+|4   |未预定   |
+|5   |未预定   |
+|6   |已预订   |
+|7   |未预定   |
+|8   |已预订   |
+|9   |未预定   |
+|10  |未预定   |
++----+------+
+
+```
+
+为了便于解答这道例题，我们可以先生成一张存储了所有可能序列的视图。有了这个视图之后，我们只需从中查找出最长的序列就可以了。
+
+```mysql
+/* 第一阶段：生成存储了所有序列的视图 */
+CREATE VIEW Sequences (start_seat, end_seat, seat_cnt) AS
+SELECT S1.seat               AS start_seat,
+       S2.seat               AS end_seat,
+       S2.seat - S1.seat + 1 AS seat_cnt
+FROM Seats3 S1,
+     Seats3 S2
+WHERE S1.seat <= S2.seat /* 第一步：生成起点和终点的组合 */
+  AND NOT EXISTS /* 第二步：描述序列内所有点需要满足的条件 */
+    (SELECT *
+     FROM Seats3 S3
+     WHERE (S3.seat BETWEEN S1.seat AND S2.seat
+         AND S3.status <> '未预订') /* 条件1的否定 */
+        OR (S3.seat = S2.seat + 1 AND S3.status = '未预订') /* 条件2的否定 */
+        OR (S3.seat = S1.seat - 1 AND S3.status = '未预订')); /* 条件3的否定 */
+
+```
+
+从这个视图中找出座位数（seat_cnt）最大的一行数据。
+
+```mysql
+SELECT start_seat, '~', end_seat, seat_cnt
+FROM Sequences
+WHERE seat_cnt = (SELECT MAX(seat_cnt) FROM Sequences);
+```
+
+## 单调递增和单调递减
+
+假设存在下面这样一张反映了某公司股价动态的表。
+
+```
++----------+-----+
+|deal_date |price|
++----------+-----+
+|2007-01-06|1000 |
+|2007-01-08|1050 |
+|2007-01-09|1050 |
+|2007-01-12|900  |
+|2007-01-13|880  |
+|2007-01-14|870  |
+|2007-01-16|920  |
+|2007-01-17|1000 |
++----------+-----+
+
+```
+
+我们求一下股价单调递增的时间区间
+
+```mysql
+-- 先生成日期区间
+select s1.deal_date as start_date, s2.deal_date as end_date
+from mystock s1,
+     mystock s2
+where s1.deal_date < s2.deal_date;
+
+
+select s1.deal_date as start_date, s2.deal_date as end_date
+from mystock s1,
+     mystock s2
+where s1.deal_date < s2.deal_date
+  and not exists(
+        select *
+        from mystock s3,
+             mystock s4
+        where s3.deal_date between s1.deal_date and s2.deal_date
+          and s4.deal_date between s1.deal_date and s2.deal_date
+          and s3.deal_date < s4.deal_date
+          and s3.price >= s4.price
+    );
+
+
+```
+
+## 小结
+
+1．SQL处理数据的方法有两种。
+
+2．第一种是把数据看成忽略了顺序的集合。
+
+3．第二种是把数据看成有序的集合，此时的基本方法如下。
+
+- a．首先用自连接生成起点和终点的组合
+- b．其次在子查询中描述内部的各个元素之间必须满足的关系
+
+4．要在SQL中表达全称量化时，需要将全称量化命题转换成存在量化命题的否定形式，并使用NOT EXISTS谓词。这是因为SQL只实现了谓词逻辑中的存在量词。
+
