@@ -1,0 +1,32 @@
+psql的-s选项把你置于单步模式，它在向服务器发送每个语句之前暂停。
+
+-----------------------------------------------------------------
+
+ddl-schemas 模式
+
+CREATE SCHEMA myschema;
+    
+    schema.table
+    database.schema.table
+
+set search_path to personal, public;
+show search_path ;
+
+除public和用户创建的模式之外，每一个数据库还包括一个pg_catalog模式，它包含了系统表和所有内建的数据类型、函数以及操作符。
+
+
+-----------------------------------------------------------------
+
+模版: template0 template1
+
+编码：参数用于指定数据库使用的字符集。
+字符类型：
+排序集：
+
+tablespace: 
+    表空间即PostgreSQL存储数据文件的位置，其中包括数据库对象。
+    pg_default：存储用户数据、用户表的索引以及临时表、临时表的索引和内部临时表等。
+    pg_global：存储系统字典表、它们的索引以及其他全局数据。
+    
+    CREATE TABLESPACE ts_primary 
+    LOCATION 'e:\pg-data\primary';
