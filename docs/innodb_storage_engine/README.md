@@ -51,7 +51,19 @@ Added dirty pages up to      377257329
 Pages flushed up to          377257329
 Last checkpoint at           377257329
 
+srv_master_thread loops: 114 srv_active, 0 srv_shutdown, 100732 srv_idle  # 主循环的状态
+srv_master_thread log flush and writes: 0
 
+
+Ibuf: size 1, free list len 0, seg size 2, 0 merges : 插入缓冲的状态, seg size 插入缓冲的大小 2 * 16kb
+
+merged operations:                                  : 合并插入缓冲的信息
+ insert 0, delete mark 0, delete 0
+discarded operations:
+ insert 0, delete mark 0, delete 0
+
+Hash table size 2267, node heap has 1 buffer(s)  哈希索引的大小，使用情况。
+0.00 hash searches/s, 0.00 non-hash searches/s  
 ```
 
 ### 2.3 innodb体系架构
@@ -233,4 +245,266 @@ fuzzy checkpoint 会在如下几种情况下发生：
 - dirty page too much checkpoint：脏页数量太多，导致强制进行 checkpoint. 参数为 `innodb_max_dirty_pages_pct`
 
 ### 2.5 Master Thread 工作方式
+
+内部有多个循环组成：主循环，后台循环，刷新循环，暂停循环。主线程会根据数据库运行的状态在不同的循环之间进行切换。
+
+主循环loop的操作有十秒一次的和一秒一次的。
+
+一秒一次的操作有：
+
+- 日志缓冲刷新回磁盘 redo log buffer
+- 合并插入缓冲
+- 至多刷新100个innodb的缓冲池中的脏页到磁盘
+- 可能切换到background loop
+
+十秒一次的操作有：
+
+- 刷新100个脏页到磁盘中。
+- 合并至多五个插入缓冲
+- 将日志缓冲刷新到磁盘
+- 删除无用的Undo页
+- 刷新100个或者10个脏页到磁盘
+
+接下来是background loop, 如果没有用户活动或者数据库关闭，就会切换到这个循环。background loop的操作如下：
+
+- 删除无用的undo页。
+- 合并20个插入缓冲。
+- 调回到主循环。
+- 不断刷新100个页直到符合条件。
+
+----
+
+更新了磁盘IO的能力，新增参数 `innodb_io_capacity` 来表示磁盘IO的吞吐量。
+
+引入了参数 `innodb_purge_batch_size` 该参数可以控制每个full purge回收的undo页的数量。
+
+脏页的刷新操作，从Master Thread线程分离到一个独立的Page Cleaner Thread。
+
+### 2.6 InnoDB关键特性
+
+>插入缓冲 insert buffer
+>
+>double write
+>
+>自适应哈希索引
+>
+>异步IO
+>
+>刷新邻接页 Flush Neighbor Page
+
+#### 2.6.1 插入缓冲
+
+对于非聚集索引的插入或者更新操作，先判断索引是否在缓冲池中，不存在的话则先放入 到insert buffer对象中。提高对于非聚集索引的插入性能。
+
+insert buffer的使用需要满足一下两个条件：
+
+- 第二索引
+- 不是唯一索引, 在插入缓冲时，数据库并不去查找索引页来判断插入记录的唯一性。
+
+**升级为change buffer**
+
+可以对 insert delete update操作都进行缓冲，称为 insert buffer, delete buffer, purge buffer.
+
+参数  `innodb_change_buffering` 控制开启各种类型的buffer的选项。
+
+参数 `innodb_change_buffer_max_size` 控制最大使用内存的数量 (以100为单位的百分比)。
+
+**insert buffer 内部实现**
+
+非唯一辅助索引的插入操作。
+
+insert buffer的数据结构是一个btree。存放在共享表空间中，默认也就是 ibdata1中。因此，视图通过独立表空间ibd文件恢复表中数据时，往往会导致 `CHECK TABLE` 失败。
+
+**合并插入缓冲**
+
+。。。
+
+#### 2.6.2 double write
+
+在apply重做日志前，用户 需要一个页的副本，当写入失效发生时，先通过页的副本来还原该页，再进行重做，这就是 double  write 。
+
+先将脏页复制到 doublewrite buffer，然后调用fsync函数，同步磁盘。doublewrite buffer的页会同时写入到共享表空间的区域和数据文件当中。
+
+```mysql
+> show global STATUS like 'innodb_dblwr%'\G
+*************************** 1. row ***************************
+Variable_name: Innodb_dblwr_pages_written
+        Value: 17088
+*************************** 2. row ***************************
+Variable_name: Innodb_dblwr_writes
+        Value: 4365
+2 rows in set (0.0060 sec)
+```
+
+#### 2.6.3 自适应哈希索引 AHI
+
+AHI可以加速等值查询。
+
+通过参数 `innodb_adaptive_hash_index` 控制是否开启哈希索引。
+
+#### 2.6.4 Async IO
+
+支持合并IO操作。
+
+linux可以通过 iostat命令，查看 `rrqm/s` `wrqm/s`
+
+参数 `innodb_use_native_aio` 来控制是否启用Native AIO.
+
+### 2.7 启动，关闭和恢复
+
+有两个相关的参数：
+
+- `innodb_fast_shutdown`
+- `innodb_force_recovery`
+
+## 3. 文件
+
+### 3.1 参数文件
+
+可以通过命令 `show variables` 查看数据库中的所有参数，可以通过 like 来过滤参数名。同时也可以通过 `information_schema.GLOBAL_VARIABLES` 来查找。
+
+#### 3.1.2 参数类型
+
+mysql数据库中的参数可以分为动态和静态类型。
+
+可以通过set命令对动态的参数进行修改：
+
+```mysql
+SET variable = expr [, variable = expr] ...
+
+variable: {
+    user_var_name
+  | param_name
+  | local_var_name
+  | {GLOBAL | @@GLOBAL.} system_var_name
+  | {PERSIST | @@PERSIST.} system_var_name
+  | {PERSIST_ONLY | @@PERSIST_ONLY.} system_var_name
+  | [SESSION | @@SESSION. | @@] system_var_name
+}
+```
+
+### 3.2 日志文件
+
+>error log
+>
+>binlog
+>
+>slow query log
+>
+>log
+
+#### 3.2.1 错误日志
+
+```
+ SELECT @@global.log_error\G
+*************************** 1. row ***************************
+@@global.log_error: .\LIBYAO-PC.err
+1 row in set (0.0005 sec)
+```
+
+#### 3.2.2 慢查询日志
+
+```
+show VARIABLES like 'long_qeury_time'\G   阈值
+
+show VARIABLES like 'log_slow_queries'\G  是否开启记录慢查询日志
+
+show VARIABLES like 'log_queries_not_using_indexes'\G  没有使用索引记录到慢查询日志
+```
+
+命令：mysqlsumpslow 
+
+表：mysql.slow_log 
+
+#### 3.2.3 查询日志
+
+默认文件名: hostname.log
+
+#### 3.2.4 二进制日志
+
+。。。
+
+### 3.5 表结构定义文件
+
+通过frm文件记录该表的表结构定义。
+
+frm还用来存放视图的定义。
+
+## 4. 表
+
+### 4.1 索引组织表
+
+innodb中，表都是根据主键顺序组织存放的，这种存储方式的表称为索引组织表 index organized table.
+
+_rowid 可以显示表的主键。
+
+### 4.2 innodb逻辑存储结构
+
+![img](./.assets/innodb_structure.png)
+
+所有数据被逻辑存放在一个空间中，称为表空间 tablespace。
+
+### 4.6 约束
+
+#### 4.6.1 数据完整性
+
+数据完整性有以下三种形式：
+
+- primary key
+- unique key
+- 触发器来保证数据完整性
+
+域完整性保证数据每列的值满足特定的条件：
+
+- 选择合适的数据类型
+- 外键约束
+- 编写触发器
+- 用 Default 约束作为强制完整性的一个方面
+
+#### 4.6.2 约束的创建和查找
+
+唯一约束: create unique index
+
+主键约束: primary
+
+```mysql
+# 查看约束
+
+select constraint_name, constraint_type from information_schema.TABLE_CONSTRAINTS where
+table_schema='mytest' and table_name='u';
+```
+
+当然外键的约束可以通过 `REFERENTIAL_CONSTRAINTS` 来查看。
+
+#### 4.6.3 约束和索引的区别
+
+约束是一个逻辑的概念，用来保证数据完整性。索引是一个数据结构，既有逻辑的概念，在数据库中还代表着物理存储的方式。
+
+#### 4.6.4 对错误数据的约束
+
+```
+set sql_mode='STRICT_TRANS_TABLES'
+```
+
+#### 4.6.6 触发器与约束
+
+触发器的作用是在 insert delete update 命令之前或者之后自动调用SQL命令或者存储过程。MySQL数据库只支持FOR EACH ROW的触发方式，即按每行记录进行触发。
+
+#### 4.6.7 外键约束
+
+### 4.7 视图
+
+## 5. 索引与算法
+
+### 5.1 概述
+
+btree索引并不能找到一个给定键值的具体行，能找到的只是被查找数据行所在的页，然后在页中查找最后得到要查找的数据。
+
+### 5.2 数据结构和算法
+
+#### 5.2.1 二分查找法
+
+对于某一条具体记录的查询是通过对page directory进行二分查找得到的。
+
+#### 5.2.2 二叉查找树和平衡二叉树
 
