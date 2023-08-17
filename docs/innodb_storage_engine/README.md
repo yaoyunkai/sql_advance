@@ -508,3 +508,83 @@ btree索引并不能找到一个给定键值的具体行，能找到的只是被
 
 #### 5.2.2 二叉查找树和平衡二叉树
 
+在二叉查找树中，通过中序遍历可以得到键值的排序输出。
+
+### 5.3 B+树
+
+### 5.4 B+树索引
+
+扇出性是什么意思
+
+#### 5.4.1 聚集索引
+
+#### 5.4.4 B+树索引的管理
+
+1, 索引的创建和删除  ---> alter table create/drop index
+
+2, 查看索引信息：
+
+```
+SQL > show index from film\G
+*************************** 1. row ***************************
+        Table: film                  表名
+   Non_unique: 0                     是否非唯一索引
+     Key_name: PRIMARY               索引名字
+ Seq_in_index: 1                     索引中该列的位置
+  Column_name: film_id               列的名字
+    Collation: A                     列以什么方式存储在索引中
+  Cardinality: 1000                  索引中唯一值的数目的估计值
+     Sub_part: NULL                  是否是列的部分被索引
+       Packed: NULL                  关键字如何被压缩
+         Null:                       索引的列是否有NULL值
+   Index_type: BTREE                 索引的类型
+      Comment:
+Index_comment:
+      Visible: YES
+   Expression: NULL
+
+```
+
+如果需要更新索引Cardinality的信息，可以使用 `analyze table`
+
+3, Fast Index Creation
+
+对于索引的添加或者删除的这类DDL操作，MySQL的过程为：
+
+- create tmp table.
+- put origin table data to tmp table
+- drop origin tmp
+- rename tmp table to origin table name
+
+FIC: 对于辅助索引的创建，innodb会对创建索引的表加上一个S锁，因此在创建的过程中只能对该表进行读操作。
+
+4, Online DDL
+
+mysql 5.6 开始支持online DDL。原理是在执行创建或者删除操作的同时，将 DML操作日志写入到一个缓存中，待完成索引创建 后再将重做应用到表上，以此达到数据的一致性。缓冲的大小由参数 `innodb_online_alter_log_max_size` 控制。
+
+### 5.5 Cardinality
+
+在访问表中很少一部分时使用B+树索引才有意义。也就是高选择性的数据。
+
+在实际应用中 Cardinality/n_rows_in_table 应接近1
+
+#### 5.5.2 innodb 如何计算Cardinality
+
+### 5.6 B+树索引的使用
+
+OLTP：在线事务型
+
+OLAP：在线分析型
+
+在loap中索引一般用于宏观的信息；olap一般会涉及到多张表之间的联接操作; 而且通常会需要对时间字段进行索引。
+
+#### 5.6.2 联合索引
+
+查询要符合最左前缀的原则。
+
+联合索引已经对第二个键值进行了排序处理。
+
+#### 5.6.3 覆盖索引
+
+
+
